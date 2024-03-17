@@ -1,4 +1,5 @@
 Pin allocations for PIC18F16Q41-I/P COMMS-MCU talking to AVR64EA28 DAQ-MCU
+PJ 2024-03-17
 
                  PIC18F16Q41
                 +-----v-----+
@@ -11,5 +12,10 @@ GREENLED      6 | RC4   RC1 | 15           RX1
 EXTTRIG       7 | RC3   RC2 | 14   OPA1OUT(NC)
 RESTART#      8 | RC6   RB4 | 13           TX2
 BUSY#         9 | RC7   RB5 | 12           RX2
-EVENT#       10 | RB7   RB6 | 11          (NC)
+EVENT# dud   10 | RB7   RB6 | 11        EVENT#
                 +-----------+
+
+Notes: 
+(1) Found that we could not activate the digital-input buffer on RB7 
+without interfering with the operation of UART1, for some unknown reason.
+Reassign to RB6.
