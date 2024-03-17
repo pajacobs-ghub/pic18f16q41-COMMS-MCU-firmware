@@ -1,0 +1,15 @@
+Pin allocations for PIC18F16Q41-I/P COMMS-MCU talking to AVR64EA28 DAQ-MCU
+
+                 PIC18F16Q41
+                +-----v-----+
+Vsys          1 | VDD   VSS | 20           GND
+(NC)          2 | RA5   RA0 | 19       ICSPDAT
+(NC)          3 | RA4   RA1 | 18       ICSPCLK
+MCLR#         4 | RA3   RA2 | 17         TX1DE
+(NC)          5 | RC5   RC0 | 16           TX1
+GREENLED      6 | RC4   RC1 | 15           RX1
+EXTTRIG       7 | RC3   RC2 | 14   OPA1OUT(NC)
+RESTART#      8 | RC6   RB4 | 13           TX2
+BUSY#         9 | RC7   RB5 | 12           RX2
+EVENT#       10 | RB7   RB6 | 11          (NC)
+                +-----------+
