@@ -66,7 +66,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.3 AVR-eDAQS node 2023-03-17"
+#define VERSION_STR "v0.4 AVR-eDAQS node 2023-03-18"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -75,7 +75,7 @@
 
 #define GREENLED (LATCbits.LATC4)
 #define READYPIN (PORTCbits.RC7)
-#define EVENTPIN (PORTBbits.RB6)
+#define EVENTPIN (PORTBbits.RB7)
 #define RESTARTn (LATCbits.LATC6)
 
 void init_pins()
@@ -89,22 +89,9 @@ void init_pins()
     TRISCbits.TRISC7 = 1;
     ANSELCbits.ANSELC7 = 0;
     //
-    // RB7 as digital-input for Event# signal (is not fine).
+    // RB7 as digital-input for Event# signal.
     TRISBbits.TRISB7 = 1;
-    // If I try to activate the digital-input buffer for RB7,
-    // uart1 does not function.
-    // ANSELBbits.ANSELB7 = 0;
-    // Turning on all digital-input buffers; still uart1 fails.
-    // ANSELB = 0x00;
-    //
-    // RB6 as digital input for Event# signal (is fine).
-    TRISBbits.TRISB6 = 1;
-    ANSELBbits.ANSELB6 = 0;
-    //
-    // RB4 and RB5 are assigned to uart2 and, fortunately,
-    // activating their digital-input does not mess with uart1.
-    ANSELBbits.ANSELB5 = 0;
-    ANSELBbits.ANSELB4 = 0;
+    ANSELBbits.ANSELB7 = 0;
     //
     // RC6 as digital-output for restart of DAQ_MCU
     ODCONCbits.ODCC6 = 1;

@@ -15,6 +15,8 @@ void uart1_init(long baud)
 {
     // Follow recipe given in PIC18F16Q41 data sheet
     // Sections 34.2.1.8 and 34.2.2.1
+    // We are going to use hardware control for the RS485
+    // but we are going to bypass CTSn/RTSn.
     unsigned int brg_value;
     //
     // Configure PPS RX1=RC1, TX1=RC0, TX1DE=RA2 
@@ -23,8 +25,10 @@ void uart1_init(long baud)
     PPSLOCK = 0xaa;
     PPSLOCKED = 0;
     U1RXPPS = 0b010001; // RC1
+    U1CTSPPS = 0b001011; // RB3 does not exist and should always read as 0
     RC0PPS = 0x10; // UART1 TX
     RA2PPS = 0x11; // UART1 TXDE
+    // Do not assign UART1RTS to any output pin.
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 1;
