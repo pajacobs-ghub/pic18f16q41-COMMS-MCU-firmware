@@ -3,6 +3,7 @@
 //
 // Peter J.
 // 2023-03-16 basic interpreter from 2023 notes and demo codes.
+// 2023-03-17 Start interacting with AVR-MCU.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -65,13 +66,45 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.1 AVR-eDAQS node 2023-03-16"
+#define VERSION_STR "v0.2 AVR-eDAQS node 2023-03-17"
 
-// Each node on the RS485 network has a unique identity.
-// The master node is '0'.
+// Each device on the RS485 network has a unique single-character identity.
+// The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
+// When programming each device, select a suitable value for MYID.
 #define MYID '1'
 
-#define GREENLED LATCbits.LATC4
+#define GREENLED (LATCbits.LATC4)
+#define READYPIN (PORTCbits.RC7)
+#define EVENTPIN (PORTBbits.RB7)
+#define RESTARTn (LATCbits.LATC6)
+
+void init_pins()
+{
+    // RC4 as digital-output for GREENLED.
+    GREENLED = 0;
+    TRISCbits.TRISC4 = 0;
+    ANSELCbits.ANSELC4 = 0;
+    //
+    /*
+    // RC7 as digital-input for DAQ-MCU Ready/Busy# signal.
+    TRISCbits.TRISC7 = 1;
+    ANSELCbits.ANSELC7 = 0;
+    //
+    // RB7 as digital-input for Event# signal.
+    TRISBbits.TRISB7 = 1;
+    ANSELBbits.ANSELB7 = 0;
+     */
+    //
+    // RC6 as digital-output for restart of DAQ_MCU
+    ODCONCbits.ODCC6 = 1;
+    RESTARTn = 1;
+    TRISCbits.TRISC6 = 0;
+    ANSELCbits.ANSELC6 = 0;
+    //
+    // RC3 as analog-in for external trigger.
+    //
+    return;
+}
 
 #define NBUFA 80 
 char bufA[NBUFA]; // for incoming RS485 comms
@@ -140,16 +173,39 @@ void interpret_command(char* cmdStr)
     char* token_ptr;
     const char* sep_tok = ", ";
     int nchar;
-    // nchar = printf("DEBUG: cmd=%s", cmdStr);
+    uint8_t i, j;
+    // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
-            nchar = snprintf(bufB, NBUFB, "/0%s#", VERSION_STR);
+            nchar = snprintf(bufB, NBUFB, "/0 %s#", VERSION_STR);
+            uart1_putstr(bufB);
+            break;
+            /*
+        case 'Q':
+            nchar = snprintf(bufB, NBUFB, "/0Q %d %d#", EVENTPIN, READYPIN);
+            uart1_putstr(bufB);
+            break;
+             */
+        case 'R':
+            RESTARTn = 0;
+            __delay_ms(1);
+            RESTARTn = 1;
+            nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#");
             uart1_putstr(bufB);
             break;
         case 'L':
-            nchar = snprintf(bufB, NBUFB, "/0L#");
+            token_ptr = strtok(&cmdStr[1], sep_tok);
+            if (token_ptr) {
+                // Found some non-blank text; assume on/off value.
+                // Use just the least-significant bit.
+                i = (uint8_t) (atoi(token_ptr) & 1);
+                GREENLED = i;
+                nchar = snprintf(bufB, NBUFB, "/0L %d#", i);
+            } else {
+                // There was no text to give a value.
+                nchar = snprintf(bufB, NBUFB, "/0L error: no value#");
+            }
             uart1_putstr(bufB);
-            GREENLED ^= 1;
             break;
         default:
            ; // Do nothing.
@@ -160,8 +216,7 @@ int main(void)
 {
     int m;
     int n;
-    TRISCbits.TRISC4 = 0; // Pin as output for GREENLED.
-    GREENLED = 0;
+    init_pins();
     uart1_init(115200);
     __delay_ms(10);
     // We will operate the MCU as a slave, 
