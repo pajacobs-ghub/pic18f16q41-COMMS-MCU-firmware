@@ -15,6 +15,14 @@ void putch(char data);
 int getch(void);
 int getche(void);
 
+void uart2_init(long baud);
+void uart2_putch(char data);
+void uart2_putstr(char* str);
+void uart2_flush_rx(void);
+char uart2_getch(void);
+int uart2_getstr(char* buf, int nbuf);
+void uart2_close(void);
+
 #define XON 0x11
 #define XOFF 0x13
 

@@ -66,7 +66,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.4 AVR-eDAQS node 2023-03-18"
+#define VERSION_STR "v0.5 AVR-eDAQS node 2023-03-28"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -125,7 +125,7 @@ int find_char(char* buf, int start, int end, char c)
     return -1;
 }
 
-char* trim_command(char* buf, int nbytes)
+char* trim_RS485_command(char* buf, int nbytes)
 // Returns a pointer to the command text string, within buf.
 // The resulting string may be zero-length.
 //
@@ -169,7 +169,7 @@ char* trim_command(char* buf, int nbytes)
     return &buf[start+2];
 } // end trim_command()
 
-void interpret_command(char* cmdStr)
+void interpret_RS485_command(char* cmdStr)
 // We intend that valid commands are answered quickly
 // so that the supervisory PC can infer the absence of a node
 // by the lack of a prompt response.
@@ -209,6 +209,20 @@ void interpret_command(char* cmdStr)
             }
             uart1_putstr(bufB);
             break;
+        case 'X':
+            if (READYPIN) {
+                // AVR is ready and waiting for a command.
+                uart2_putstr(&cmdStr[1]);
+                uart2_putch('\r');
+                uart2_getstr(bufD, NBUFD);
+                // [TODO] Do we need to trim AVR response?
+                nchar = snprintf(bufB, NBUFB, "/0X ok, %s#\n", &bufD[0]);
+            } else {
+                // AVR is not ready for a command.
+                nchar = snprintf(bufB, NBUFB, "/0X fail, AVR busy#\n");
+            }
+            uart1_putstr(bufB);
+            break;
         default:
            ; // Do nothing.
     }
@@ -219,9 +233,10 @@ int main(void)
     int m;
     int n;
     init_pins();
-    uart1_init(115200);
+    uart1_init(115200); // RS485 comms
+    uart2_init(468000); // comms to AVR DAQ-MCU
     __delay_ms(10);
-    // We will operate the MCU as a slave, 
+    // We will operate this COMMS_MCU as a slave, 
     // waiting for commands and only responding when spoken to.
     while (1) {
         // Characters are not echoed as they are typed.
@@ -229,10 +244,12 @@ int main(void)
         // CR signals end of incoming string.
         m = uart1_getstr(bufA, NBUFA);
         if (m > 0) {
-            char* cmd = trim_command(bufA, NBUFA);
-            interpret_command(cmd);
+            char* cmd = trim_RS485_command(bufA, NBUFA);
+            interpret_RS485_command(cmd);
         }
     }
+    uart2_flush_rx();
+    uart2_close();
     uart1_flush_rx();
     uart1_close();
     return 0; // Expect that the MCU will reset.
