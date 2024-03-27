@@ -181,18 +181,18 @@ void interpret_command(char* cmdStr)
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
-            nchar = snprintf(bufB, NBUFB, "/0 %s#", VERSION_STR);
+            nchar = snprintf(bufB, NBUFB, "/0 %s#\n", VERSION_STR);
             uart1_putstr(bufB);
             break;
         case 'Q':
-            nchar = snprintf(bufB, NBUFB, "/0Q %d %d#", EVENTPIN, READYPIN);
+            nchar = snprintf(bufB, NBUFB, "/0Q %d %d#\n", EVENTPIN, READYPIN);
             uart1_putstr(bufB);
             break;
         case 'R':
             RESTARTn = 0;
             __delay_ms(1);
             RESTARTn = 1;
-            nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#");
+            nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#\n");
             uart1_putstr(bufB);
             break;
         case 'L':
@@ -202,10 +202,10 @@ void interpret_command(char* cmdStr)
                 // Use just the least-significant bit.
                 i = (uint8_t) (atoi(token_ptr) & 1);
                 GREENLED = i;
-                nchar = snprintf(bufB, NBUFB, "/0L %d#", i);
+                nchar = snprintf(bufB, NBUFB, "/0L %d#\n", i);
             } else {
                 // There was no text to give a value.
-                nchar = snprintf(bufB, NBUFB, "/0L error: no value#");
+                nchar = snprintf(bufB, NBUFB, "/0L error: no value#\n");
             }
             uart1_putstr(bufB);
             break;
