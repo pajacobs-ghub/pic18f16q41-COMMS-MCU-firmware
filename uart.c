@@ -156,19 +156,21 @@ void uart2_init(long baud)
     PPSLOCKED = 0;
     U2RXPPS = 0b001101; // RB5
     RB4PPS = 0x13; // UART2 TX
+    U2CTSPPS = 0b001010; // RB2 does not exist and should always read as 0
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 1;
-    ANSELBbits.ANSELB4 = 0; // TX2 pin
+    ANSELBbits.ANSELB4 = 0; // TX2 on RB4 pin
     TRISBbits.TRISB4 = 0; // output
     ANSELBbits.ANSELB5 = 0; // Turn on digital input buffer for RX2
-    TRISBbits.TRISB5 = 1; // RX2 is an input
+    TRISBbits.TRISB5 = 1; // RX2 on RB5 is an input
     //
     U2CON0bits.BRGS = 1;
     brg_value = (unsigned int) (FOSC/baud/4 - 1);
-    // For 64MHz, 115200 baud, expect value of 137.
-    //              9600 baud                 1665.
-    //            468000 baud                   33.
+    // For 64MHz,   9600 baud                 1665.  (error 0.04%)
+    //            115200 baud, expect value of 137.  (error 0.6%)
+    //            230400 baud                   68.  (error 0.6%)
+    //            460800 baud                   33.  (error 2.2%)
     U2BRG = brg_value;
     //
     U2CON0bits.MODE = 0b0000; // Use 8N1 asynchronous

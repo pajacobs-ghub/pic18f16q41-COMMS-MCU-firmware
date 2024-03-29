@@ -4,6 +4,7 @@
 // Peter J.
 // 2023-03-16 basic interpreter from 2023 notes and demo codes.
 // 2023-03-17 For interacting with AVR-MCU: Event#, Busy# and Restart#.
+// 2024-03-29 Have pass-through commands working.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -66,7 +67,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.5 AVR-eDAQS node 2023-03-28"
+#define VERSION_STR "v0.6 PIC18F16Q41 COMMS-MCU 2023-03-29"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -104,14 +105,15 @@ void init_pins()
     return;
 }
 
+// For incoming RS485 comms
 #define NBUFA 80 
-char bufA[NBUFA]; // for incoming RS485 comms
-#define NBUFB 132
-char bufB[NBUFB]; // for outgoing RS485 comms
-#define NBUFC 32
-char bufC[NBUFC]; // for outgoing AVR commands
-#define NBUFD 132
-char bufD[NBUFD]; // for incoming AVR responses
+char bufA[NBUFA];
+// For outgoing RS485 comms
+#define NBUFB 268
+char bufB[NBUFB];
+// For incoming AVR responses
+#define NBUFC 256
+char bufC[NBUFC];
 
 int find_char(char* buf, int start, int end, char c)
 // Returns the index of the character if found, -1 otherwise.
@@ -212,13 +214,12 @@ void interpret_RS485_command(char* cmdStr)
         case 'X':
             if (READYPIN) {
                 // AVR is ready and waiting for a command.
-                nchar = snprintf(bufB, NBUFB, "DEBUG string to AVR: %s\n", &cmdStr[1]); uart1_putstr(bufB);
                 uart2_putstr(&cmdStr[1]);
                 uart2_putch('\r');
-                nchar = snprintf(bufB, NBUFB, "DEBUG about to get string from AVR\n"); uart1_putstr(bufB);
-                uart2_getstr(bufD, NBUFD);
-                // [TODO] Do we need to trim AVR response?
-                nchar = snprintf(bufB, NBUFB, "/0X ok: %s#\n", &bufD[0]);
+                // The AVR may start its response within 200us,
+                // so start listening for that response immediately.
+                uart2_getstr(bufC, NBUFC);
+                nchar = snprintf(bufB, NBUFB, "/0X %s#\n", &bufC[0]);
             } else {
                 // AVR is not ready for a command.
                 nchar = snprintf(bufB, NBUFB, "/0X fail: AVR busy#\n");
@@ -236,7 +237,7 @@ int main(void)
     int n;
     init_pins();
     uart1_init(115200); // RS485 comms
-    uart2_init(468000); // comms to AVR DAQ-MCU
+    uart2_init(230400); // comms to AVR DAQ-MCU
     __delay_ms(10);
     // We will operate this COMMS_MCU as a slave, 
     // waiting for commands and only responding when spoken to.
