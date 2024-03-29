@@ -212,14 +212,16 @@ void interpret_RS485_command(char* cmdStr)
         case 'X':
             if (READYPIN) {
                 // AVR is ready and waiting for a command.
+                nchar = snprintf(bufB, NBUFB, "DEBUG string to AVR: %s\n", &cmdStr[1]); uart1_putstr(bufB);
                 uart2_putstr(&cmdStr[1]);
                 uart2_putch('\r');
+                nchar = snprintf(bufB, NBUFB, "DEBUG about to get string from AVR\n"); uart1_putstr(bufB);
                 uart2_getstr(bufD, NBUFD);
                 // [TODO] Do we need to trim AVR response?
-                nchar = snprintf(bufB, NBUFB, "/0X ok, %s#\n", &bufD[0]);
+                nchar = snprintf(bufB, NBUFB, "/0X ok: %s#\n", &bufD[0]);
             } else {
                 // AVR is not ready for a command.
-                nchar = snprintf(bufB, NBUFB, "/0X fail, AVR busy#\n");
+                nchar = snprintf(bufB, NBUFB, "/0X fail: AVR busy#\n");
             }
             uart1_putstr(bufB);
             break;
