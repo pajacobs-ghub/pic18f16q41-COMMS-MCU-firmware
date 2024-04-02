@@ -68,7 +68,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.7 PIC18F16Q41 COMMS-MCU 2024-04-02"
+#define VERSION_STR "v0.8 PIC18F16Q41 COMMS-MCU 2024-04-02"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -238,6 +238,10 @@ void interpret_RS485_command(char* cmdStr)
             RESTARTn = 0;
             __delay_ms(1);
             RESTARTn = 1;
+            // Wait until we are reasonably sure that the AVR has restarted
+            // and then flush the incoming serial buffer.
+            __delay_ms(350);
+            uart2_flush_rx();
             nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#\n");
             uart1_putstr(bufB);
             break;
@@ -308,6 +312,17 @@ int main(void)
     uart1_init(115200); // RS485 comms
     uart2_init(230400); // comms to AVR DAQ-MCU
     __delay_ms(10);
+    // Flash LED twice at start-up to indicate that the MCU is ready.
+    for (int8_t i=0; i < 2; ++i) {
+        GREENLED = 1;
+        __delay_ms(250);
+        GREENLED = 0;
+        __delay_ms(250);
+    }
+    // Wait until we are reasonably sure that the AVR has restarted
+    // and then flush the incoming serial buffer.
+    __delay_ms(100);
+    uart2_flush_rx();
     // We will operate this COMMS_MCU as a slave, 
     // waiting for commands and only responding when spoken to.
     while (1) {
