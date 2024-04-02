@@ -5,6 +5,7 @@
 // 2023-03-16 basic interpreter from 2023 notes and demo codes.
 // 2023-03-17 For interacting with AVR-MCU: Event#, Busy# and Restart#.
 // 2024-03-29 Have pass-through commands working.
+// 2024-04-02 Implement software trigger (to assert Event# line).
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -67,7 +68,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.6 PIC18F16Q41 COMMS-MCU 2023-03-29"
+#define VERSION_STR "v0.7 PIC18F16Q41 COMMS-MCU 2023-04-02"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -91,6 +92,7 @@ void init_pins()
     ANSELCbits.ANSELC7 = 0;
     //
     // RB7 as digital-input for Event# signal.
+    // Later, it may be driven by this MCU, on software command.
     TRISBbits.TRISB7 = 1;
     ANSELBbits.ANSELB7 = 0;
     //
@@ -102,6 +104,38 @@ void init_pins()
     //
     // RC3 as analog-in for external trigger.
     //
+    return;
+}
+
+static inline void assert_event_pin()
+{
+    // Actively pull the event pin low.
+    LATBbits.LATB7 = 0;
+    ODCONBbits.ODCB7 = 1;
+    TRISBbits.TRISB7 = 0;
+}
+
+static inline void release_event_pin()
+{
+    // Release the drive on the pin and allow it to be pulled high.
+    LATBbits.LATB7 = 0;
+    TRISBbits.TRISB7 = 1;
+}
+
+void init_comparator(int16_t level, int8_t slope)
+{
+    // [TODO]
+    // slope=1 trigger on exceeding level
+    // slope=0 trigger on going below level
+    // Use a CLC to latch the comparator output.
+    // Connect the output of the CLC to the EVENTn pin.
+    return;
+}
+
+void disable_comparator()
+{
+    // [TODO]
+    // Release the EVENTn pin and disable the comparator and CLC.
     return;
 }
 
@@ -183,7 +217,17 @@ void interpret_RS485_command(char* cmdStr)
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
-            nchar = snprintf(bufB, NBUFB, "/0 %s#\n", VERSION_STR);
+            nchar = snprintf(bufB, NBUFB, "/0v %s#\n", VERSION_STR);
+            uart1_putstr(bufB);
+            break;
+        case 't':
+            assert_event_pin();
+            nchar = snprintf(bufB, NBUFB, "/0t Software trigger to assert EVENTn line low#\n");
+            uart1_putstr(bufB);
+            break;
+        case 'c':
+            release_event_pin();
+            nchar = snprintf(bufB, NBUFB, "/0c Release EVENTn line (from software trigger)#\n");
             uart1_putstr(bufB);
             break;
         case 'Q':
@@ -211,6 +255,30 @@ void interpret_RS485_command(char* cmdStr)
             }
             uart1_putstr(bufB);
             break;
+        case 'a':
+            token_ptr = strtok(&cmdStr[1], sep_tok);
+            if (token_ptr) {
+                // Found some non-blank text; assume trigger level
+                // and, maybe, slope flag.
+                int16_t level = atoi(token_ptr);
+                int8_t slope = 1;
+                token_ptr = strtok(token_ptr, sep_tok);
+                if (token_ptr) {
+                    slope = (int8_t) atoi(token_ptr);
+                }
+                init_comparator(level, slope);
+                nchar = snprintf(bufB, NBUFB, "/0a %d %d#\n", level, slope);
+            } else {
+                // There was no text to give a trigger level.
+                nchar = snprintf(bufB, NBUFB, "/0a error: no level#\n");
+            }
+            uart1_putstr(bufB);
+            break;
+        case 'd':
+            disable_comparator();
+            nchar = snprintf(bufB, NBUFB, "/0d Disable comparator and release EVENTn line#\n");
+            uart1_putstr(bufB);
+            break;
         case 'X':
             if (READYPIN) {
                 // AVR is ready and waiting for a command.
@@ -227,7 +295,8 @@ void interpret_RS485_command(char* cmdStr)
             uart1_putstr(bufB);
             break;
         default:
-           ; // Do nothing.
+            nchar = snprintf(bufB, NBUFB, "/0%c fail: Unknown command#\n", cmdStr[0]);
+            uart1_putstr(bufB);
     }
 } // end interpret_command()
 
