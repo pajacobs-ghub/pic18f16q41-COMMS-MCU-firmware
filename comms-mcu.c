@@ -68,7 +68,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.7 PIC18F16Q41 COMMS-MCU 2023-04-02"
+#define VERSION_STR "v0.7 PIC18F16Q41 COMMS-MCU 2024-04-02"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
