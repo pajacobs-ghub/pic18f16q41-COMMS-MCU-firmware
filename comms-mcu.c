@@ -68,7 +68,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.8 PIC18F16Q41 COMMS-MCU 2024-04-02"
+#define VERSION_STR "v0.9 PIC18F16Q41 COMMS-MCU 2024-04-03"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -232,6 +232,11 @@ void interpret_RS485_command(char* cmdStr)
             break;
         case 'Q':
             nchar = snprintf(bufB, NBUFB, "/0Q %d %d#\n", EVENTPIN, READYPIN);
+            uart1_putstr(bufB);
+            break;
+        case 'F':
+            uart2_flush_rx();
+            nchar = snprintf(bufB, NBUFB, "/0R Flushed RX2 buffer#\n");
             uart1_putstr(bufB);
             break;
         case 'R':
