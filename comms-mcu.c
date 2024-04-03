@@ -236,7 +236,7 @@ void interpret_RS485_command(char* cmdStr)
             break;
         case 'F':
             uart2_flush_rx();
-            nchar = snprintf(bufB, NBUFB, "/0R Flushed RX2 buffer#\n");
+            nchar = snprintf(bufB, NBUFB, "/0F Flushed RX2 buffer#\n");
             uart1_putstr(bufB);
             break;
         case 'R':
