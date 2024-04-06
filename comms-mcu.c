@@ -6,6 +6,7 @@
 // 2023-03-17 For interacting with AVR-MCU: Event#, Busy# and Restart#.
 // 2024-03-29 Have pass-through commands working.
 // 2024-04-02 Implement software trigger (to assert Event# line).
+// 2024-04-06 Set VREF (on OPA1OUT pin) on and off.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -68,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.9 PIC18F16Q41 COMMS-MCU 2024-04-03"
+#define VERSION_STR "v0.10 PIC18F16Q41 COMMS-MCU 2024-04-06"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -118,17 +119,92 @@ static inline void assert_event_pin()
 static inline void release_event_pin()
 {
     // Release the drive on the pin and allow it to be pulled high.
-    LATBbits.LATB7 = 0;
+    LATBbits.LATB7 = 1;
     TRISBbits.TRISB7 = 1;
 }
 
-void init_comparator(int16_t level, int8_t slope)
+void FVR_init()
+{
+    // We want to supply both the ADC and the DAC with 4V.
+    FVRCONbits.ADFVR = 3;  // 4v096
+    FVRCONbits.CDAFVR = 3; // 4v096
+    FVRCONbits.EN = 1;
+    while (!FVRCONbits.RDY) { /* should be less than 25 microseconds */ }
+    return;
+}
+
+void FVR_close()
+{
+    FVRCONbits.EN = 0;
+    FVRCONbits.ADFVR = 0;
+    FVRCONbits.CDAFVR = 0;
+    return;
+}
+
+void set_VREF_on(uint8_t level)
+{
+    // Assuming that the fixed voltage reference is on at 4v096,
+    // take a fraction of that voltage and feed it through the 
+    // DAC2 and then through the OPA1 to the external pin (OPA1OUT/RC2).
+    //
+    DAC2CONbits.PSS = 0b10; // FVR Buffer 2
+    DAC2CONbits.NSS = 0; // VSS
+    DAC2CONbits.EN = 1;
+    DAC2DATL = level;
+    //
+    OPA1CON2bits.PCH = 0b101; // DAC2_OUT
+    OPA1CON0bits.UG = 1; // unity gain
+    OPA1CON0bits.CPON = 1; // charge pump active
+    OPA1CON0bits.SOC = 0; // basic operation
+    OPA1CON0bits.EN = 1;
+    return;
+}
+
+void set_VREF_off()
+{
+    OPA1CON0bits.EN = 0;
+    DAC2CONbits.EN = 0;
+    return;
+}
+
+void ADC_init()
+{
+    // Set up the ADC to look at the comparator input pin C1IN3/RC3.
+    TRISCbits.TRISC3 = 1;
+    ANSELCbits.ANSELC3 = 1;
+    
+    return;
+}
+
+int16_t ADC_read()
+{
+    // Returns the value from the ADC when looking at the input pin
+    // for the comparator.
+    // [TODO]
+    return 0;
+}
+
+void ADC_close()
 {
     // [TODO]
-    // slope=1 trigger on exceeding level
-    // slope=0 trigger on going below level
+    return;
+}
+
+void enable_comparator(uint8_t level, int8_t slope)
+{
+    // level sets the trigger voltage
+    // slope=1 to trigger on exceeding level
+    // slope=0 to trigger on going below level
+    //
+    // Use DAC1 for the reference level.
+    DAC1CONbits.PSS = 0b10; // FVR Buffer 2
+    DAC1CONbits.NSS = 0; // VSS
+    DAC1CONbits.EN = 1;
+    DAC1DATL = level;
+    //
     // Use a CLC to latch the comparator output.
     // Connect the output of the CLC to the EVENTn pin.
+    //
     return;
 }
 
@@ -136,6 +212,7 @@ void disable_comparator()
 {
     // [TODO]
     // Release the EVENTn pin and disable the comparator and CLC.
+    DAC1CONbits.EN = 1;
     return;
 }
 
@@ -221,25 +298,32 @@ void interpret_RS485_command(char* cmdStr)
             uart1_putstr(bufB);
             break;
         case 't':
+            // Software trigger to assert EVENTn line low.
             assert_event_pin();
-            nchar = snprintf(bufB, NBUFB, "/0t Software trigger to assert EVENTn line low#\n");
+            nchar = snprintf(bufB, NBUFB, "/0t Software trigger#\n");
             uart1_putstr(bufB);
             break;
-        case 'c':
+        case 'z':
+            // Release EVENTn line (from software trigger).
             release_event_pin();
-            nchar = snprintf(bufB, NBUFB, "/0c Release EVENTn line (from software trigger)#\n");
+            nchar = snprintf(bufB, NBUFB, "/0z Release EVENTn line#\n");
             uart1_putstr(bufB);
             break;
         case 'Q':
+            // Query the status signals.
+            // READY/BUSYn is from the AVR.
+            // EVENTn is a party line that anyone may pull low.
             nchar = snprintf(bufB, NBUFB, "/0Q %d %d#\n", EVENTPIN, READYPIN);
             uart1_putstr(bufB);
             break;
         case 'F':
+            // Flush the RX2 buffer for incoming text from the AVR.
             uart2_flush_rx();
             nchar = snprintf(bufB, NBUFB, "/0F Flushed RX2 buffer#\n");
             uart1_putstr(bufB);
             break;
         case 'R':
+            // Restart the attached AVR MCU.
             RESTARTn = 0;
             __delay_ms(1);
             RESTARTn = 1;
@@ -251,6 +335,7 @@ void interpret_RS485_command(char* cmdStr)
             uart1_putstr(bufB);
             break;
         case 'L':
+            // Turn LED on or off.
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
                 // Found some non-blank text; assume on/off value.
@@ -264,31 +349,71 @@ void interpret_RS485_command(char* cmdStr)
             }
             uart1_putstr(bufB);
             break;
-        case 'a':
+        case 'a': {
+            // Report the ADC value for the analog signal on the comparator input.
+            int16_t aValue = ADC_read();
+            nchar = snprintf(bufB, NBUFB, "/0a %d#\n", aValue);
+            uart1_putstr(bufB); }
+            break;
+        case 'e':
+            // Enable comparator, to pull EVENT# line low on the 
+            // external trigger signal.
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
                 // Found some non-blank text; assume trigger level
                 // and, maybe, slope flag.
                 int16_t level = atoi(token_ptr);
+                if (level > 255) level = 255;
+                if (level < 0) level = 0;
                 int8_t slope = 1;
-                token_ptr = strtok(token_ptr, sep_tok);
+                token_ptr = strtok(NULL, sep_tok);
                 if (token_ptr) {
                     slope = (int8_t) atoi(token_ptr);
                 }
-                init_comparator(level, slope);
-                nchar = snprintf(bufB, NBUFB, "/0a %d %d#\n", level, slope);
+                enable_comparator((uint8_t)level, slope);
+                nchar = snprintf(bufB, NBUFB, "/0e %d %d#\n", level, slope);
             } else {
                 // There was no text to give a trigger level.
-                nchar = snprintf(bufB, NBUFB, "/0a error: no level#\n");
+                nchar = snprintf(bufB, NBUFB, "/0e error: no level supplied#\n");
             }
             uart1_putstr(bufB);
             break;
         case 'd':
+            // Disable comparator and release EVENTn line.
             disable_comparator();
-            nchar = snprintf(bufB, NBUFB, "/0d Disable comparator and release EVENTn line#\n");
+            nchar = snprintf(bufB, NBUFB, "/0d Disable comparator#\n");
+            uart1_putstr(bufB);
+            break;
+        case 'w':
+            // Enable VREF output, to feed an external ADC chip on the DAC-MCU.
+            // Note that this is not relevant to all ADC MCUs.
+            token_ptr = strtok(&cmdStr[1], sep_tok);
+            if (token_ptr) {
+                // Found some non-blank text; assume level followed by on/off flag.
+                // The on/off flag is optional and defaults to 1.
+                int16_t level = atoi(token_ptr);
+                int8_t onOffFlag = 1;
+                token_ptr = strtok(NULL, sep_tok);
+                if (token_ptr) {
+                    onOffFlag = (int8_t) atoi(token_ptr);
+                }
+                if (onOffFlag) {
+                    if (level > 255) level = 255;
+                    if (level < 0) level = 0;
+                    set_VREF_on((uint8_t)level);
+                    nchar = snprintf(bufB, NBUFB, "/0w VREF on level=%d#\n", level);
+                } else {
+                    set_VREF_off();
+                    nchar = snprintf(bufB, NBUFB, "/0w VREF off#\n");                    
+                }
+            } else {
+                // There was no text to indicate action.
+                nchar = snprintf(bufB, NBUFB, "/0w error: missing level and on/off flag#\n");
+            }
             uart1_putstr(bufB);
             break;
         case 'X':
+            // Pass through a command to the AVR MCU.
             if (READYPIN) {
                 // AVR is ready and waiting for a command.
                 uart2_putstr(&cmdStr[1]);
@@ -316,6 +441,8 @@ int main(void)
     init_pins();
     uart1_init(115200); // RS485 comms
     uart2_init(230400); // comms to AVR DAQ-MCU
+    FVR_init();
+    ADC_init();
     __delay_ms(10);
     // Flash LED twice at start-up to indicate that the MCU is ready.
     for (int8_t i=0; i < 2; ++i) {
@@ -340,6 +467,9 @@ int main(void)
             interpret_RS485_command(cmd);
         }
     }
+    set_VREF_off();
+    ADC_close();
+    FVR_close();
     uart2_flush_rx();
     uart2_close();
     uart1_flush_rx();
