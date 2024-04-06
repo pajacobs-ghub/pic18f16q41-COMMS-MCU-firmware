@@ -6,7 +6,7 @@
 // 2023-03-17 For interacting with AVR-MCU: Event#, Busy# and Restart#.
 // 2024-03-29 Have pass-through commands working.
 // 2024-04-02 Implement software trigger (to assert Event# line).
-// 2024-04-06 Set VREF (on OPA1OUT pin) on and off.
+// 2024-04-06 Set VREF (on OPA1OUT pin) on and off; implement external trigger.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -69,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.10 PIC18F16Q41 COMMS-MCU 2024-04-06"
+#define VERSION_STR "v0.11 PIC18F16Q41 COMMS-MCU 2024-04-06"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -145,14 +145,14 @@ void set_VREF_on(uint8_t level)
 {
     // Assuming that the fixed voltage reference is on at 4v096,
     // take a fraction of that voltage and feed it through the 
-    // DAC2 and then through the OPA1 to the external pin (OPA1OUT/RC2).
+    // DAC1 and then through the OPA1 to the external pin (OPA1OUT/RC2).
     //
-    DAC2CONbits.PSS = 0b10; // FVR Buffer 2
-    DAC2CONbits.NSS = 0; // VSS
-    DAC2CONbits.EN = 1;
-    DAC2DATL = level;
+    DAC1CONbits.PSS = 0b10; // FVR Buffer 2
+    DAC1CONbits.NSS = 0; // VSS
+    DAC1CONbits.EN = 1;
+    DAC1DATL = level;
     //
-    OPA1CON2bits.PCH = 0b101; // DAC2_OUT
+    OPA1CON2bits.PCH = 0b100; // DAC1_OUT
     OPA1CON0bits.UG = 1; // unity gain
     OPA1CON0bits.CPON = 1; // charge pump active
     OPA1CON0bits.SOC = 0; // basic operation
@@ -163,7 +163,7 @@ void set_VREF_on(uint8_t level)
 void set_VREF_off()
 {
     OPA1CON0bits.EN = 0;
-    DAC2CONbits.EN = 0;
+    DAC1CONbits.EN = 0;
     return;
 }
 
@@ -186,7 +186,7 @@ void ADC_init()
     return;
 }
 
-int16_t ADC_read()
+uint16_t ADC_read()
 {
     // Returns the value from the ADC when looking at the input pin
     // for the comparator.
@@ -209,23 +209,84 @@ void enable_comparator(uint8_t level, int8_t slope)
     // slope=1 to trigger on exceeding level
     // slope=0 to trigger on going below level
     //
-    // Use DAC1 for the reference level.
-    DAC1CONbits.PSS = 0b10; // FVR Buffer 2
-    DAC1CONbits.NSS = 0; // VSS
-    DAC1CONbits.EN = 1;
-    DAC1DATL = level;
+    // Use DAC2 for the reference level.
+    DAC2CONbits.PSS = 0b10; // FVR Buffer 2
+    DAC2CONbits.NSS = 0; // VSS
+    DAC2CONbits.EN = 1;
+    DAC2DATL = level;
+    __delay_ms(1);
     //
-    // Use a CLC to latch the comparator output.
-    // Connect the output of the CLC to the EVENTn pin.
+    // Our external signal goes into the inverting input of the comparator,
+    // so we need to invert the polarity to get trigger on positive slope
+    // of the external signal.
+    CM1NCH = 0b011; // C1IN3- pin
+    CM1PCH = 0b101; // DAC2_Output
+    CM1CON0bits.OUT = 0; // Just route internally to the CLC1.
+    if (slope) {
+        CM1CON0bits.POL = 1;
+    } else {
+        CM1CON0bits.POL = 0;
+    }
+    CM1CON0bits.HYS = 0; // no hysteresis
+    CM1CON0bits.SYNC = 0; // async output
+    CM1CON0bits.EN = 1;
+    NOP();
     //
+    // Use CLC1 to latch the comparator output.
+    CLCSELECT = 0b00; // To select CLC1 registers for the following settings.
+    CLCnCONbits.EN = 0; // Disable while setting up.
+    CLCnCONbits.MODE = 0b100; // D flip-flop with set and reset
+    CLCnPOLbits.POL = 1; // invert the output
+    // Data select from outside world
+    CLCnSEL0 = 0b00011100; // data1 gets CMP1_OUT as input
+    CLCnSEL1 = 0; // data2 gets CLCIN0PPS as input, but gets ignored in logic select
+    CLCnSEL2 = 0; // data3 as for data2
+    CLCnSEL3 = 0; // data4 as for data2
+    // Logic select into gates
+    CLCnGLS0 = 0b10; // data1 goes through true to gate 1
+    CLCnGLS1 = 0; // gate 2 gets logic 0
+    CLCnGLS2 = 0; // gate 3 gets logic 0
+    CLCnGLS3 = 0; // gate 4 gets logic 0
+    // Gate output polarities
+    CLCnPOLbits.G1POL = 0; // edge clock is not inverted
+    CLCnPOLbits.G2POL = 1; // invert 0 to get 1 as latch data in
+    CLCnPOLbits.G3POL = 0; // reset
+    CLCnPOLbits.G4POL = 0; // set
+    // Now that the D-latch is set up, enable it.
+    CLCnCONbits.EN = 1;
+    NOP();
+    // Connect the output of the CLC1 to the EVENTn pin.
+    GIE = 0;
+    PPSLOCK = 0x55;
+    PPSLOCK = 0xaa;
+    PPSLOCKED = 0;
+    RB7PPS = 0x01; // CLC1OUT
+    PPSLOCK = 0x55;
+    PPSLOCK = 0xaa;
+    PPSLOCKED = 1;
+    ODCONBbits.ODCB7 = 1; // Open-drain output
+    TRISBbits.TRISB7 = 0; // Drive as an output.
     return;
 }
 
 void disable_comparator()
 {
-    // [TODO]
     // Release the EVENTn pin and disable the comparator and CLC.
-    DAC1CONbits.EN = 1;
+    LATBbits.LATB7 = 1;
+    TRISBbits.TRISB7 = 1; // return to being an input
+    GIE = 0;
+    PPSLOCK = 0x55;
+    PPSLOCK = 0xaa;
+    PPSLOCKED = 0;
+    RB7PPS = 0x00; // LATB7
+    PPSLOCK = 0x55;
+    PPSLOCK = 0xaa;
+    PPSLOCKED = 1;
+    //
+    CLCSELECT = 0b00; // To select CLC1 for the following setting.
+    CLCnCONbits.EN = 0;
+    CM1CON0bits.EN = 0;
+    DAC2CONbits.EN = 0;
     return;
 }
 
@@ -364,8 +425,8 @@ void interpret_RS485_command(char* cmdStr)
             break;
         case 'a': {
             // Report the ADC value for the analog signal on the comparator input.
-            int16_t aValue = ADC_read();
-            nchar = snprintf(bufB, NBUFB, "/0a %d#\n", aValue);
+            uint16_t aValue = ADC_read();
+            nchar = snprintf(bufB, NBUFB, "/0a %u#\n", aValue);
             uart1_putstr(bufB); }
             break;
         case 'e':
