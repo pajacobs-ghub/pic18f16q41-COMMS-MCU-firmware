@@ -172,7 +172,17 @@ void ADC_init()
     // Set up the ADC to look at the comparator input pin C1IN3/RC3.
     TRISCbits.TRISC3 = 1;
     ANSELCbits.ANSELC3 = 1;
-    
+    //
+    ADCON0bits.CS = 1; // use dedicated RC oscillator
+    ADCON0bits.FM = 1; // right-justified result
+    ADCON2bits.ADMD = 0b000; // basic (legacy) behaviour
+    PIR1bits.ADIF = 0;
+    ADREFbits.NREF = 0; // negative reference is Vss
+    ADREFbits.PREF = 0b11; // positive reference is FVR
+    ADACQ = 0x10; // 16TAD acquisition period
+    ADPCH = 0x13; // select RC3/ANC3
+    ADCON0bits.ON = 1; // power on the device
+
     return;
 }
 
@@ -180,13 +190,16 @@ int16_t ADC_read()
 {
     // Returns the value from the ADC when looking at the input pin
     // for the comparator.
-    // [TODO]
-    return 0;
+    ADCON0bits.GO = 1;
+    NOP();
+    while (ADCON0bits.GO) { /* wait, should be brief */ }
+    PIR1bits.ADIF = 0;
+    return ADRES;
 }
 
 void ADC_close()
 {
-    // [TODO]
+    ADCON0bits.ON = 0;
     return;
 }
 
