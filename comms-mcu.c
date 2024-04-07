@@ -69,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.11 PIC18F16Q41 COMMS-MCU 2024-04-06"
+#define VERSION_STR "v0.12 PIC18F16Q41 COMMS-MCU 2024-04-07"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -221,7 +221,7 @@ void enable_comparator(uint8_t level, int8_t slope)
     // of the external signal.
     CM1NCH = 0b011; // C1IN3- pin
     CM1PCH = 0b101; // DAC2_Output
-    CM1CON0bits.OUT = 0; // Just route internally to the CLC1.
+    CM1CON0bits.OUT = 0; // Later, just route internally to the CLC1.
     if (slope) {
         CM1CON0bits.POL = 1;
     } else {
@@ -233,29 +233,43 @@ void enable_comparator(uint8_t level, int8_t slope)
     NOP();
     //
     // Use CLC1 to latch the comparator output.
+    //
+    // Follow the set-up description in Section 22.6 of datasheet.
     CLCSELECT = 0b00; // To select CLC1 registers for the following settings.
     CLCnCONbits.EN = 0; // Disable while setting up.
-    CLCnCONbits.MODE = 0b100; // D flip-flop with set and reset
-    CLCnPOLbits.POL = 1; // invert the output
     // Data select from outside world
     CLCnSEL0 = 0b00011100; // data1 gets CMP1_OUT as input
     CLCnSEL1 = 0; // data2 gets CLCIN0PPS as input, but gets ignored in logic select
     CLCnSEL2 = 0; // data3 as for data2
     CLCnSEL3 = 0; // data4 as for data2
     // Logic select into gates
-    CLCnGLS0 = 0b10; // data1 goes through true to gate 1
+    // CLCnGLS0 = 0b10; // data1 goes through true to gate 1 (S-R set)
+    CLCnGLS0 = 0; // Temporary fudge: don't select the data1 signal but 0 instead.
     CLCnGLS1 = 0; // gate 2 gets logic 0
     CLCnGLS2 = 0; // gate 3 gets logic 0
     CLCnGLS3 = 0; // gate 4 gets logic 0
     // Gate output polarities
-    CLCnPOLbits.G1POL = 0; // edge clock is not inverted
-    CLCnPOLbits.G2POL = 1; // invert 0 to get 1 as latch data in
-    CLCnPOLbits.G3POL = 0; // reset
-    CLCnPOLbits.G4POL = 0; // set
-    // Now that the D-latch is set up, enable it.
-    CLCnCONbits.EN = 1;
-    NOP();
+    CLCnPOLbits.G1POL = 0;
+    CLCnPOLbits.G2POL = 0;
+    CLCnPOLbits.G3POL = 0;
+    CLCnPOLbits.G4POL = 0;
+    // Logic function is S-R latch
+    CLCnCONbits.MODE = 0b011;
+    // Invert the CLC output because we want active low EVENT# signal
+    CLCnPOLbits.POL = 1;
+    //
+    // 2024-04-07 At the moment we have a problem with setting up the CLC
+    // either as a D-latch or SR-latch.  
+    // With data1 routed to gate1, the CLC's uninverted output seems to 
+    // be not initially zero even though the CM1OUT value seems to be zero
+    // (according to the debug print statement).
+    // A temporary fudge above is to not connect data1 to gate1.
+    // This does not fix the problem but at least we don't pull EVENTn low
+    // prematurely.
+    //
     // Connect the output of the CLC1 to the EVENTn pin.
+    ODCONBbits.ODCB7 = 1; // Open-drain output
+    TRISBbits.TRISB7 = 0; // Drive as an output.
     GIE = 0;
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
@@ -264,8 +278,8 @@ void enable_comparator(uint8_t level, int8_t slope)
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 1;
-    ODCONBbits.ODCB7 = 1; // Open-drain output
-    TRISBbits.TRISB7 = 0; // Drive as an output.
+    // Now that the S-R latch is set up, enable it.
+    CLCnCONbits.EN = 1;
     return;
 }
 
@@ -451,6 +465,7 @@ void interpret_RS485_command(char* cmdStr)
                 nchar = snprintf(bufB, NBUFB, "/0e error: no level supplied#\n");
             }
             uart1_putstr(bufB);
+            nchar = snprintf(bufB, NBUFB, "DEBUG CMOUT=%u CLCDATA=%u EVENTn=%u\n", CMOUT, CLCDATA, EVENTPIN); uart1_putstr(bufB);
             break;
         case 'd':
             // Disable comparator and release EVENTn line.
