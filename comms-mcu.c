@@ -69,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.12 PIC18F16Q41 COMMS-MCU 2024-04-07"
+#define VERSION_STR "v0.13 PIC18F16Q41 COMMS-MCU 2024-04-08"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -111,6 +111,7 @@ void init_pins()
 static inline void assert_event_pin()
 {
     // Actively pull the event pin low.
+    // Of course, this will not work if the CLC1 has control of RB7.
     LATBbits.LATB7 = 0;
     ODCONBbits.ODCB7 = 1;
     TRISBbits.TRISB7 = 0;
@@ -119,6 +120,7 @@ static inline void assert_event_pin()
 static inline void release_event_pin()
 {
     // Release the drive on the pin and allow it to be pulled high.
+    // Should not be used if CLC1 has control of RB7.
     LATBbits.LATB7 = 1;
     TRISBbits.TRISB7 = 1;
 }
@@ -203,11 +205,16 @@ void ADC_close()
     return;
 }
 
-void enable_comparator(uint8_t level, int8_t slope)
+uint8_t enable_comparator(uint8_t level, int8_t slope)
 {
+    // Input:
     // level sets the trigger voltage
     // slope=1 to trigger on exceeding level
     // slope=0 to trigger on going below level
+    //
+    // Returns:
+    // 0 if successfully set up, 
+    // 1 if the comparator is already high.
     //
     // Use DAC2 for the reference level.
     DAC2CONbits.PSS = 0b10; // FVR Buffer 2
@@ -221,7 +228,6 @@ void enable_comparator(uint8_t level, int8_t slope)
     // of the external signal.
     CM1NCH = 0b011; // C1IN3- pin
     CM1PCH = 0b101; // DAC2_Output
-    CM1CON0bits.OUT = 0; // Later, just route internally to the CLC1.
     if (slope) {
         CM1CON0bits.POL = 1;
     } else {
@@ -230,8 +236,13 @@ void enable_comparator(uint8_t level, int8_t slope)
     CM1CON0bits.HYS = 0; // no hysteresis
     CM1CON0bits.SYNC = 0; // async output
     CM1CON0bits.EN = 1;
-    NOP();
-    //
+    // The signal out of the comparator should transition 0 to 1
+    // as the external trigger voltage crosses the specified level.
+    __delay_ms(1);
+    if (CMOUTbits.MC1OUT) {
+        // Fail early because the comparator is already triggered.
+        return 1;
+    }
     // Use CLC1 to latch the comparator output.
     //
     // Follow the set-up description in Section 22.6 of datasheet.
@@ -243,11 +254,10 @@ void enable_comparator(uint8_t level, int8_t slope)
     CLCnSEL2 = 0; // data3 as for data2
     CLCnSEL3 = 0; // data4 as for data2
     // Logic select into gates
-    // CLCnGLS0 = 0b10; // data1 goes through true to gate 1 (S-R set)
-    CLCnGLS0 = 0; // Temporary fudge: don't select the data1 signal but 0 instead.
-    CLCnGLS1 = 0; // gate 2 gets logic 0
-    CLCnGLS2 = 0; // gate 3 gets logic 0
-    CLCnGLS3 = 0; // gate 4 gets logic 0
+    CLCnGLS0 = 0b10; // data1 goes through true to gate 1 (S-R set)
+    CLCnGLS1 = 0; // gate 2 gets logic 0 (S-R set)
+    CLCnGLS2 = 0; // gate 3 gets logic 0 (S-R reset)
+    CLCnGLS3 = 0; // gate 4 gets logic 0 (S-R reset)
     // Gate output polarities
     CLCnPOLbits.G1POL = 0;
     CLCnPOLbits.G2POL = 0;
@@ -257,16 +267,6 @@ void enable_comparator(uint8_t level, int8_t slope)
     CLCnCONbits.MODE = 0b011;
     // Invert the CLC output because we want active low EVENT# signal
     CLCnPOLbits.POL = 1;
-    //
-    // 2024-04-07 At the moment we have a problem with setting up the CLC
-    // either as a D-latch or SR-latch.  
-    // With data1 routed to gate1, the CLC's uninverted output seems to 
-    // be not initially zero even though the CM1OUT value seems to be zero
-    // (according to the debug print statement).
-    // A temporary fudge above is to not connect data1 to gate1.
-    // This does not fix the problem but at least we don't pull EVENTn low
-    // prematurely.
-    //
     // Connect the output of the CLC1 to the EVENTn pin.
     ODCONBbits.ODCB7 = 1; // Open-drain output
     TRISBbits.TRISB7 = 0; // Drive as an output.
@@ -280,7 +280,7 @@ void enable_comparator(uint8_t level, int8_t slope)
     PPSLOCKED = 1;
     // Now that the S-R latch is set up, enable it.
     CLCnCONbits.EN = 1;
-    return;
+    return 0; // Success is presumed.
 }
 
 void disable_comparator()
@@ -458,8 +458,12 @@ void interpret_RS485_command(char* cmdStr)
                 if (token_ptr) {
                     slope = (int8_t) atoi(token_ptr);
                 }
-                enable_comparator((uint8_t)level, slope);
-                nchar = snprintf(bufB, NBUFB, "/0e %d %d#\n", level, slope);
+                uint8_t flag = enable_comparator((uint8_t)level, slope);
+                if (flag) {
+                    nchar = snprintf(bufB, NBUFB, "/0e error: comparator already triggered#\n");
+                } else {
+                    nchar = snprintf(bufB, NBUFB, "/0e %d %d#\n", level, slope);
+                }
             } else {
                 // There was no text to give a trigger level.
                 nchar = snprintf(bufB, NBUFB, "/0e error: no level supplied#\n");
