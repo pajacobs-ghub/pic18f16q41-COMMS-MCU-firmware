@@ -1,5 +1,5 @@
 // comms-mcu.c
-// RS485 communications MCU using the PIC18F16Q41. 
+// RS485 communications MCU using the PIC18F16Q41.
 //
 // Peter J.
 // 2023-03-16 basic interpreter from 2023 notes and demo codes.
@@ -146,7 +146,7 @@ void FVR_close()
 void set_VREF_on(uint8_t level)
 {
     // Assuming that the fixed voltage reference is on at 4v096,
-    // take a fraction of that voltage and feed it through the 
+    // take a fraction of that voltage and feed it through the
     // DAC1 and then through the OPA1 to the external pin (OPA1OUT/RC2).
     //
     DAC1CONbits.PSS = 0b10; // FVR Buffer 2
@@ -213,7 +213,7 @@ uint8_t enable_comparator(uint8_t level, int8_t slope)
     // slope=0 to trigger on going below level
     //
     // Returns:
-    // 0 if successfully set up, 
+    // 0 if successfully set up,
     // 1 if the comparator is already high.
     //
     // Use DAC2 for the reference level.
@@ -292,7 +292,7 @@ void disable_comparator()
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 0;
-    RB7PPS = 0x00; // LATB7
+    RB7PPS = 0x00; // LATB7 (back to software control)
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 1;
@@ -305,7 +305,7 @@ void disable_comparator()
 }
 
 // For incoming RS485 comms
-#define NBUFA 80 
+#define NBUFA 80
 char bufA[NBUFA];
 // For outgoing RS485 comms
 #define NBUFB 268
@@ -343,7 +343,7 @@ char* trim_RS485_command(char* buf, int nbytes)
 // Real World Instrumentation
 // O'Rielly 2010
 // Chapter 11 Instrumentation Data I/O, Unique Protocols.
-// 
+//
 {
     // printf("DEBUG: buf=%s", buf);
     int start = find_char(buf, 0, nbytes-1, '/');
@@ -444,7 +444,7 @@ void interpret_RS485_command(char* cmdStr)
             uart1_putstr(bufB); }
             break;
         case 'e':
-            // Enable comparator, to pull EVENT# line low on the 
+            // Enable comparator, to pull EVENT# line low on the
             // external trigger signal.
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
@@ -469,7 +469,6 @@ void interpret_RS485_command(char* cmdStr)
                 nchar = snprintf(bufB, NBUFB, "/0e error: no level supplied#\n");
             }
             uart1_putstr(bufB);
-            nchar = snprintf(bufB, NBUFB, "DEBUG CMOUT=%u CLCDATA=%u EVENTn=%u\n", CMOUT, CLCDATA, EVENTPIN); uart1_putstr(bufB);
             break;
         case 'd':
             // Disable comparator and release EVENTn line.
@@ -497,7 +496,7 @@ void interpret_RS485_command(char* cmdStr)
                     nchar = snprintf(bufB, NBUFB, "/0w VREF on level=%d#\n", level);
                 } else {
                     set_VREF_off();
-                    nchar = snprintf(bufB, NBUFB, "/0w VREF off#\n");                    
+                    nchar = snprintf(bufB, NBUFB, "/0w VREF off#\n");
                 }
             } else {
                 // There was no text to indicate action.
@@ -548,7 +547,7 @@ int main(void)
     // and then flush the incoming serial buffer.
     __delay_ms(100);
     uart2_flush_rx();
-    // We will operate this COMMS_MCU as a slave, 
+    // We will operate this COMMS_MCU as a slave,
     // waiting for commands and only responding when spoken to.
     while (1) {
         // Characters are not echoed as they are typed.
