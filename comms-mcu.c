@@ -69,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.13 PIC18F16Q41 COMMS-MCU 2024-04-08"
+#define VERSION_STR "v0.14 PIC18F16Q41 COMMS-MCU 2024-04-09"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -374,6 +374,8 @@ void interpret_RS485_command(char* cmdStr)
 // We intend that valid commands are answered quickly
 // so that the supervisory PC can infer the absence of a node
 // by the lack of a prompt response.
+// A command that does not do what is expected should return a message
+// that includes the word "error".
 {
     char* token_ptr;
     const char* sep_tok = ", ";
@@ -516,12 +518,12 @@ void interpret_RS485_command(char* cmdStr)
                 nchar = snprintf(bufB, NBUFB, "/0X %s#\n", &bufC[0]);
             } else {
                 // AVR is not ready for a command.
-                nchar = snprintf(bufB, NBUFB, "/0X fail: AVR busy#\n");
+                nchar = snprintf(bufB, NBUFB, "/0X error: AVR busy#\n");
             }
             uart1_putstr(bufB);
             break;
         default:
-            nchar = snprintf(bufB, NBUFB, "/0%c fail: Unknown command#\n", cmdStr[0]);
+            nchar = snprintf(bufB, NBUFB, "/0%c error: Unknown command#\n", cmdStr[0]);
             uart1_putstr(bufB);
     }
 } // end interpret_command()
