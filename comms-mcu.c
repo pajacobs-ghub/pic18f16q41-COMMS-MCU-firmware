@@ -69,12 +69,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.14 PIC18F16Q41 COMMS-MCU 2024-04-09"
+#define VERSION_STR "v0.15 PIC18F16Q41 COMMS-MCU 2024-07-22"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
 // When programming each device, select a suitable value for MYID.
-#define MYID '1'
+#define MYID '4'
 
 #define GREENLED (LATCbits.LATC4)
 #define READYPIN (PORTCbits.RC7)
@@ -558,7 +558,12 @@ int main(void)
         m = uart1_getstr(bufA, NBUFA);
         if (m > 0) {
             char* cmd = trim_RS485_command(bufA, NBUFA);
-            interpret_RS485_command(cmd);
+            // Note that the cmd string may be of zero length,
+            // with the null character in the first place.
+            // If that is the case, do nothing with it.
+            if (*cmd) {
+                interpret_RS485_command(cmd);
+            }
         }
     }
     set_VREF_off();
