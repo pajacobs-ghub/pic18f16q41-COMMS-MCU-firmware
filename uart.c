@@ -84,7 +84,7 @@ char uart1_getch(void)
 
 int uart1_getstr(char* buf, int nbuf)
 // Read (without echo) a line of characters into the buffer,
-// stopping when we see a return character.
+// stopping when we see a new-line character.
 // Returns the number of characters collected,
 // excluding the terminating null char.
 {
@@ -98,8 +98,7 @@ int uart1_getstr(char* buf, int nbuf)
             buf[i] = c;
             i++;
         }
-        if (c == '\r') {
-            // Stop collecting on receiving a carriage-return character.
+        if (c == '\n') {
             done = 1;
             buf[i] = '\0';
         }

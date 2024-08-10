@@ -69,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.16 PIC18F16Q41 COMMS-MCU 2024-07-22"
+#define VERSION_STR "v0.17 PIC18F16Q41 COMMS-MCU 2024-08-10"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -384,32 +384,32 @@ void interpret_RS485_command(char* cmdStr)
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
-            nchar = snprintf(bufB, NBUFB, "/0v %s#\r", VERSION_STR);
+            nchar = snprintf(bufB, NBUFB, "/0v %s#\n", VERSION_STR);
             uart1_putstr(bufB);
             break;
         case 't':
             // Software trigger to assert EVENTn line low.
             assert_event_pin();
-            nchar = snprintf(bufB, NBUFB, "/0t Software trigger#\r");
+            nchar = snprintf(bufB, NBUFB, "/0t Software trigger#\n");
             uart1_putstr(bufB);
             break;
         case 'z':
             // Release EVENTn line (from software trigger).
             release_event_pin();
-            nchar = snprintf(bufB, NBUFB, "/0z Release EVENTn line#\r");
+            nchar = snprintf(bufB, NBUFB, "/0z Release EVENTn line#\n");
             uart1_putstr(bufB);
             break;
         case 'Q':
             // Query the status signals.
             // READY/BUSYn is from the AVR.
             // EVENTn is a party line that anyone may pull low.
-            nchar = snprintf(bufB, NBUFB, "/0Q %d %d#\r", EVENTPIN, READYPIN);
+            nchar = snprintf(bufB, NBUFB, "/0Q %d %d#\n", EVENTPIN, READYPIN);
             uart1_putstr(bufB);
             break;
         case 'F':
             // Flush the RX2 buffer for incoming text from the AVR.
             uart2_flush_rx();
-            nchar = snprintf(bufB, NBUFB, "/0F Flushed RX2 buffer#\r");
+            nchar = snprintf(bufB, NBUFB, "/0F Flushed RX2 buffer#\n");
             uart1_putstr(bufB);
             break;
         case 'R':
@@ -421,7 +421,7 @@ void interpret_RS485_command(char* cmdStr)
             // and then flush the incoming serial buffer.
             __delay_ms(350);
             uart2_flush_rx();
-            nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#\r");
+            nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#\n");
             uart1_putstr(bufB);
             break;
         case 'L':
@@ -432,17 +432,17 @@ void interpret_RS485_command(char* cmdStr)
                 // Use just the least-significant bit.
                 i = (uint8_t) (atoi(token_ptr) & 1);
                 GREENLED = i;
-                nchar = snprintf(bufB, NBUFB, "/0L %d#\r", i);
+                nchar = snprintf(bufB, NBUFB, "/0L %d#\n", i);
             } else {
                 // There was no text to give a value.
-                nchar = snprintf(bufB, NBUFB, "/0L error: no value#\r");
+                nchar = snprintf(bufB, NBUFB, "/0L error: no value#\n");
             }
             uart1_putstr(bufB);
             break;
         case 'a': {
             // Report the ADC value for the analog signal on the comparator input.
             uint16_t aValue = ADC_read();
-            nchar = snprintf(bufB, NBUFB, "/0a %u#\r", aValue);
+            nchar = snprintf(bufB, NBUFB, "/0a %u#\n", aValue);
             uart1_putstr(bufB); }
             break;
         case 'e':
@@ -462,20 +462,20 @@ void interpret_RS485_command(char* cmdStr)
                 }
                 uint8_t flag = enable_comparator((uint8_t)level, slope);
                 if (flag) {
-                    nchar = snprintf(bufB, NBUFB, "/0e error: comparator already triggered#\r");
+                    nchar = snprintf(bufB, NBUFB, "/0e error: comparator already triggered#\n");
                 } else {
-                    nchar = snprintf(bufB, NBUFB, "/0e %d %d#\r", level, slope);
+                    nchar = snprintf(bufB, NBUFB, "/0e %d %d#\n", level, slope);
                 }
             } else {
                 // There was no text to give a trigger level.
-                nchar = snprintf(bufB, NBUFB, "/0e error: no level supplied#\r");
+                nchar = snprintf(bufB, NBUFB, "/0e error: no level supplied#\n");
             }
             uart1_putstr(bufB);
             break;
         case 'd':
             // Disable comparator and release EVENTn line.
             disable_comparator();
-            nchar = snprintf(bufB, NBUFB, "/0d Disable comparator#\r");
+            nchar = snprintf(bufB, NBUFB, "/0d Disable comparator#\n");
             uart1_putstr(bufB);
             break;
         case 'w':
@@ -495,14 +495,14 @@ void interpret_RS485_command(char* cmdStr)
                     if (level > 255) level = 255;
                     if (level < 0) level = 0;
                     set_VREF_on((uint8_t)level);
-                    nchar = snprintf(bufB, NBUFB, "/0w VREF on level=%d#\r", level);
+                    nchar = snprintf(bufB, NBUFB, "/0w VREF on level=%d#\n", level);
                 } else {
                     set_VREF_off();
-                    nchar = snprintf(bufB, NBUFB, "/0w VREF off#\r");
+                    nchar = snprintf(bufB, NBUFB, "/0w VREF off#\n");
                 }
             } else {
                 // There was no text to indicate action.
-                nchar = snprintf(bufB, NBUFB, "/0w error: missing level and on/off flag#\r");
+                nchar = snprintf(bufB, NBUFB, "/0w error: missing level and on/off flag#\n");
             }
             uart1_putstr(bufB);
             break;
@@ -515,15 +515,15 @@ void interpret_RS485_command(char* cmdStr)
                 // The AVR may start its response within 200us,
                 // so start listening for that response immediately.
                 uart2_getstr(bufC, NBUFC);
-                nchar = snprintf(bufB, NBUFB, "/0X %s#\r", &bufC[0]);
+                nchar = snprintf(bufB, NBUFB, "/0X %s#\n", &bufC[0]);
             } else {
                 // AVR is not ready for a command.
-                nchar = snprintf(bufB, NBUFB, "/0X error: AVR busy#\r");
+                nchar = snprintf(bufB, NBUFB, "/0X error: AVR busy#\n");
             }
             uart1_putstr(bufB);
             break;
         default:
-            nchar = snprintf(bufB, NBUFB, "/0%c error: Unknown command#\r", cmdStr[0]);
+            nchar = snprintf(bufB, NBUFB, "/0%c error: Unknown command#\n", cmdStr[0]);
             uart1_putstr(bufB);
     }
 } // end interpret_command()
