@@ -74,7 +74,7 @@
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
 // When programming each device, select a suitable value for MYID.
-#define MYID '3'
+#define MYID '6'
 
 #define GREENLED (LATCbits.LATC4)
 #define READYPIN (PORTCbits.RC7)
@@ -526,7 +526,7 @@ void interpret_RS485_command(char* cmdStr)
             nchar = snprintf(bufB, NBUFB, "/0%c error: Unknown command#\n", cmdStr[0]);
             uart1_putstr(bufB);
     }
-} // end interpret_command()
+} // end interpret_RS485_command()
 
 int main(void)
 {
@@ -554,7 +554,7 @@ int main(void)
     while (1) {
         // Characters are not echoed as they are typed.
         // Backspace deleting is allowed.
-        // CR signals end of incoming string.
+        // NL (Ctrl-J) signals end of incoming string.
         m = uart1_getstr(bufA, NBUFA);
         if (m > 0) {
             char* cmd = trim_RS485_command(bufA, NBUFA);
