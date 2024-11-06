@@ -69,14 +69,15 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.17 PIC18F16Q41 COMMS-MCU 2024-08-10"
+#define VERSION_STR "v0.18 PIC18F16Q41 COMMS-MCU 2024-11-06"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
 // When programming each device, select a suitable value for MYID.
-#define MYID '6'
+#define MYID '1'
 
-#define GREENLED (LATCbits.LATC4)
+#define LED (LATCbits.LATC4)
+uint8_t override_led = 0;
 #define READYPIN (PORTCbits.RC7)
 #define EVENTPIN (PORTBbits.RB7)
 #define RESTARTn (LATCbits.LATC6)
@@ -84,7 +85,7 @@
 void init_pins()
 {
     // RC4 as digital-output for GREENLED.
-    GREENLED = 0;
+    LED = 0;
     TRISCbits.TRISC4 = 0;
     ANSELCbits.ANSELC4 = 0;
     //
@@ -382,6 +383,7 @@ void interpret_RS485_command(char* cmdStr)
     int nchar;
     uint8_t i, j;
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
+    if (!override_led) LED = 1; // To indicate start of interpreter activity.
     switch (cmdStr[0]) {
         case 'v':
             nchar = snprintf(bufB, NBUFB, "/0v %s#\n", VERSION_STR);
@@ -426,12 +428,15 @@ void interpret_RS485_command(char* cmdStr)
             break;
         case 'L':
             // Turn LED on or off.
+            // Turning the LED on by command overrides its use
+            // as an indicator of interpreter activity.
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
                 // Found some non-blank text; assume on/off value.
                 // Use just the least-significant bit.
                 i = (uint8_t) (atoi(token_ptr) & 1);
-                GREENLED = i;
+                LED = i;
+                override_led = i;
                 nchar = snprintf(bufB, NBUFB, "/0L %d#\n", i);
             } else {
                 // There was no text to give a value.
@@ -526,6 +531,7 @@ void interpret_RS485_command(char* cmdStr)
             nchar = snprintf(bufB, NBUFB, "/0%c error: Unknown command#\n", cmdStr[0]);
             uart1_putstr(bufB);
     }
+    if (!override_led) LED = 0; // To indicate end of interpreter activity.    
 } // end interpret_RS485_command()
 
 int main(void)
@@ -540,9 +546,9 @@ int main(void)
     __delay_ms(10);
     // Flash LED twice at start-up to indicate that the MCU is ready.
     for (int8_t i=0; i < 2; ++i) {
-        GREENLED = 1;
+        LED = 1;
         __delay_ms(250);
-        GREENLED = 0;
+        LED = 0;
         __delay_ms(250);
     }
     // Wait until we are reasonably sure that the AVR has restarted
